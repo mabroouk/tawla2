@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0f">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Tawla Showpiece v11a — PWA + Auto Rotate + Curtain UI</title>
+<style>
+:root{ --bg:#0b0b0f; --panel:#15151c; --muted:#8ea3b0; --accent:#3ddc84; }
+*{box-sizing:border-box} html,body{height:100%;}
+body{margin:0;background:var(--bg);color:#f3f6f9;font-family:system-ui,Segoe UI,Roboto,Ubuntu;overflow:hidden}
+.header{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:linear-gradient(90deg,#171721,#121219);border-bottom:1px solid #232433}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand h1{margin:0;font-size:18px;white-space:nowrap} .sub{color:#b7c4d1;font-size:12px;white-space:nowrap}
+.container{position:relative;height:calc(100% - 50px)}
+.board-wrap{position:absolute; inset:0; background:#0a0e14; display:flex; align-items:center; justify-content:center}
+canvas{width:100%;height:100%;background:#0a0e14;display:block;touch-action:none}
+.status{position:absolute;left:10px;bottom:10px;background:#111620a8;padding:6px 10px;border-radius:8px;font-size:12px;color:#cfe6ff;display:flex;gap:10px;align-items:center;flex-wrap:wrap;max-width:70vw}
+.pill{background:#0f1420;border:1px solid #283141;padding:4px 8px;border-radius:8px}
+.dice{display:inline-grid;grid-template-columns:repeat(2,32px);gap:6px;padding:6px 8px;background:#121620;border:1px solid #2b3140;border-radius:8px;min-width:92px;justify-content:center}
+.die{width:32px;height:32px;border:1px solid #2b3140;border-radius:6px;display:grid;place-items:center;background:#0f1420;position:relative;transition:transform .08s}
+.die.ai{background:#7a1414} .dot{width:6px;height:6px;background:#fff;border-radius:50%;box-shadow:0 0 3px #fff8;position:absolute;transform:translate(-50%,-50%)}
+.footer{position:fixed;inset:auto 0 6px 0;text-align:center;font-size:12px;color:#9fb0c0;opacity:0.9;pointer-events:none}
+.footer span{background:#0e1422cc;border:1px solid #283141;padding:4px 8px;border-radius:8px}
+
+/* Curtain UI */
+#curtainBtn{
+  position:fixed; right:10px; top:58px; z-index:50;
+  background:#1f2430; border:1px solid #2b3140; color:#fff; border-radius:10px; padding:8px 12px; cursor:pointer;
+}
+#curtain{
+  position:fixed; inset:0 0 0 auto; width:min(420px, 92vw); background:#131720;
+  border-left:1px solid #283141; z-index:40; transform:translateX(100%); transition:transform .25s ease;
+  display:flex; flex-direction:column; gap:10px; padding:12px;
+}
+#curtain.show{ transform:translateX(0); }
+#curtain h3{margin:6px 0 8px}
+.control-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.control-row select, .control-row button, .control-row input[type=radio]+label{
+  background:#1f2430;color:#fff;border:1px solid #2b3140;border-radius:10px;padding:6px 10px;cursor:pointer;font-size:13px
+}
+.control-row input[type=radio]{display:none}
+.control-row input[type=radio]:checked+label{outline:2px solid var(--accent)}
+#closeCurtain{align-self:flex-end}
+
+/* Mobile/TV minimal header */
+@media (max-width:1100px){
+  .header .sub{display:none}
+}
+
+/* Fullscreen dice touch target */
+#diceTouch{
+  position:fixed; left:50%; transform:translateX(-50%);
+  bottom:12px; z-index:30; cursor:pointer;
+}
+.hint{position:fixed; inset:auto 50% 10px auto; transform:translateX(50%); font-size:12px; color:#9fb0c0; background:#0e1422cc; border:1px solid #283141; border-radius:8px; padding:4px 8px}
+</style>
+<link rel="apple-touch-icon" href="icon-192.png">
+</head>
+<body>
+<header class="header">
+  <div class="brand">
+    <h1>📱 Tawla v11a</h1>
+    <span class="sub">PWA + Auto-rotate + Curtain UI (TV/Mobile ready)</span>
+  </div>
+</header>
+
+<button id="curtainBtn" title="إظهار/إخفاء التحكم">⚙️</button>
+<aside id="curtain" aria-hidden="true">
+  <button id="closeCurtain">✖</button>
+  <h3>الإعدادات</h3>
+  <div class="control-row">
+    <label>الثيم:
+      <select id="themeSel">
+        <option value="oasis">صحراوي Oasis</option>
+        <option value="levant">شامي Levant</option>
+        <option value="cedar">أرز Cedar</option>
+        <option value="midnight">ليلي Midnight</option>
+      </select>
+    </label>
+    <label>النمط:
+      <select id="variantSel">
+        <option value="standard">قياسي</option>
+        <option value="nohit">بدون ضرب</option>
+        <option value="plakoto">Plakoto (محبوسة)</option>
+        <option value="fevga">Fevga (صف أمامي/بدون ضرب)</option>
+      </select>
+    </label>
+    <label>الرصّة:
+      <select id="setupSel">
+        <option value="standard">قياسية</option>
+        <option value="hyper3">Hypergammon (٣ أحجار)</option>
+        <option value="row15">صف كامل (15 أمام كل لاعب)</option>
+      </select>
+    </label>
+    <label>السرعة:
+      <select id="speedSel">
+        <option value="slow">بطيء</option>
+        <option value="normal" selected>عادي</option>
+        <option value="fast">سريع</option>
+      </select>
+    </label>
+  </div>
+  <div class="control-row">
+    <span>الوضع:</span>
+    <input id="modePVP" type="radio" name="mode" value="pvp" checked><label for="modePVP">لاعبان</label>
+    <input id="modeAI"  type="radio" name="mode" value="ai"><label for="modeAI">ضد الكمبيوتر</label>
+    <input id="modeAIAI"  type="radio" name="mode" value="ai-ai"><label for="modeAIAI">متفرّج</label>
+  </div>
+  <div class="control-row">
+    <button id="assistBtn">🤖 مساعدة نقلة</button>
+    <button id="editBtn">🛠️ تحرير القطع</button>
+    <button id="newBtn">بدء جديد</button>
+  </div>
+  <div id="editBar" class="control-row" style="display:none">
+    <span class="pill">التحرير: <b id="editWho">الأسود</b> • الوضع: <b id="editMode">إضافة</b></span>
+    <button id="toggleWho">تبديل اللاعب</button>
+    <button id="toggleAdd">+ / −</button>
+    <span class="pill">أسود: <b id="cB">0</b> / 15</span>
+    <span class="pill">أبيض: <b id="cW">0</b> / 15</span>
+    <button id="clearAll">تصفير</button>
+    <button id="stdFill">ملء قياسي</button>
+    <button id="rowFill">ملء صف كامل</button>
+    <button id="doneEdit" style="background:#244a2a;border-color:#2f6f3a">تم</button>
+  </div>
+  <div class="control-row">
+    <div class="pill">نصيحة: اضغط على <b>النرد</b> أو المساحة أسفله للرمي.</div>
+  </div>
+</aside>
+
+<main class="container">
+  <section class="board-wrap">
+    <canvas id="cv"></canvas>
+    <div class="status">
+      <span id="turn" class="pill">دور: الأسود</span>
+      <span id="pips" class="pill">PIPS — أسود: 0 | أبيض: 0</span>
+      <span id="msg">جاهز</span>
+    </div>
+  </section>
+</main>
+
+<div id="diceTouch" class="dice" title="اضغط للرمي"><div class="die"><div class="dot" style="left:50%;top:50%"></div></div><div class="die"><div class="dot" style="left:50%;top:50%"></div></div></div>
+<div class="hint">⛶ أضفها للشاشة الرئيسية من المتصفح لتعمل كتطبيق</div>
+
+<div class="footer"><span>برمجة: أحمد مبروك</span></div>
+
+<script>
+// PWA register
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=> {
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+
+// ===== صوت + TTS =====
+let AC, rollSound;
+function audioInit(){ if(AC) return; AC = new (window.AudioContext||window.webkitAudioContext)();
+  rollSound = ()=>{
+    const dur=0.25, n=AC.createBufferSource();
+    const buf = AC.createBuffer(1, AC.sampleRate*dur, AC.sampleRate);
+    const data = buf.getChannelData(0);
+    for(let i=0;i<data.length;i++){ data[i]=(Math.random()*2-1)*(1 - i/data.length); }
+    n.buffer=buf; const g=AC.createGain(); g.gain.value=0.25;
+    const bp=AC.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=160; bp.Q.value=1.2;
+    n.connect(bp).connect(g).connect(AC.destination); n.start();
+  };
+}
+function speak(text, rate=0.95){
+  try{
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'en-US';
+    u.rate = rate; u.pitch = 1;
+    const vs = speechSynthesis.getVoices();
+    const v = vs.find(v=>/en/i.test(v.lang)) || vs[0];
+    if(v) u.voice = v;
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+  }catch(e){ /* ignore */ }
+}
+const enNames = {1:'one',2:'two',3:'three',4:'four',5:'five',6:'six'};
+const faNames = {1:'Yek',2:'Do',3:'Seh',4:'Chahar',5:'Besh',6:'Shesh'};
+const dblNames = {1:'Hap Yek',2:'Dobareh',3:'Doseh',4:'Dorji',5:'Dabesh',6:'Doshesh'};
+function speakDice(a,b){
+  const A=Math.max(a,b), B=Math.min(a,b);
+  if(A===B){ speak(`double ${enNames[A]}`); setTimeout(()=>speak(dblNames[A], 1.0), 650); }
+  else { speak(`${enNames[A]} ${enNames[B]}`); setTimeout(()=> speak(`${faNames[A]}-${faNames[B]}`, 1.0), 700); }
+}
+
+// ===== Curtain UI =====
+const curtain = document.getElementById('curtain');
+const curtainBtn = document.getElementById('curtainBtn');
+document.getElementById('closeCurtain').onclick = ()=> curtain.classList.remove('show');
+curtainBtn.onclick = ()=> curtain.classList.toggle('show');
+
+// Auto default: mobile/TV -> hidden; desktop -> shown
+if(Math.min(window.innerWidth, window.innerHeight) < 900){ curtain.classList.remove('show'); } else { curtain.classList.add('show'); }
+
+// ===== Canvas & Auto-rotate =====
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+let DPR = Math.max(1, window.devicePixelRatio||1);
+let ROT = 0; // 0 or 90
+let off=document.createElement('canvas'), offctx=off.getContext('2d');
+let DISP_W=0, DISP_H=0;
+
+function resizeCanvas(){
+  const headerH = 50;
+  const w = window.innerWidth, h = window.innerHeight - headerH;
+  DPR = Math.max(1, window.devicePixelRatio||1);
+  // Canvas pixel size equals viewport
+  cv.width = w * DPR; cv.height = h * DPR; cv.style.width = w+'px'; cv.style.height = h+'px';
+  // Decide rotation
+  ROT = (h > w) ? 90 : 0;
+  // Prepare offscreen in board coords (DISP_W x DISP_H)
+  DISP_W = (ROT===0? w : h);
+  DISP_H = (ROT===0? h : w);
+  off.width = Math.max(2, Math.floor(DISP_W*DPR));
+  off.height = Math.max(2, Math.floor(DISP_H*DPR));
+  offctx.setTransform(DPR,0,0,DPR,0,0);
+  drawStatic(); drawDynamic();
+}
+window.addEventListener('resize', resizeCanvas);
+document.addEventListener('orientationchange', ()=> setTimeout(resizeCanvas, 250));
+
+// ===== لوحات الألوان + زخارف =====
+function getPalette(name){
+  const PAL = {
+    oasis: { bg1:'#2a231a', bg2:'#3a2f22', board:'#2E2A24', triA:'#EAD8B1', triB:'#B68D40', border:'#C8A974', hiSelect:'#FFD166', hiTarget:'#06D6A0', motif:'#00000010' },
+    levant:{ bg1:'#0f2431', bg2:'#153344', board:'#142733', triA:'#A7D3E8', triB:'#2B6F95', border:'#8EC5E5', hiSelect:'#FFC857', hiTarget:'#2EE6A6', motif:'#ffffff12' },
+    cedar: { bg1:'#14231A', bg2:'#1C2A22', board:'#1E2E25', triA:'#BBD6B8', triB:'#3D6A4D', border:'#9BC9A4', hiSelect:'#FFD166', hiTarget:'#2BD6C4', motif:'#00000010' },
+    midnight:{bg1:'#0B1020', bg2:'#0E1328', board:'#0F172A', triA:'#D9D9D9', triB:'#4B5563', border:'#A3B3FF', hiSelect:'#FFD166', hiTarget:'#22D3EE', motif:'#ffffff12' }
+  };
+  return PAL[name] || PAL.oasis;
+}
+
+// ===== الحالة =====
+let theme='oasis', variant='standard', setup='standard', mode='pvp', aiLevel=1;
+let current=0; // 0 أسود، 1 أبيض
+let points, bar, home;
+let dice=[], diceLeft=[];
+let selected=null, focusIdx=23;
+let dragging={active:false, from:null, x:0, y:0};
+
+// UI refs
+const turnEl=document.getElementById('turn');
+const msgEl=document.getElementById('msg');
+const pipsEl=document.getElementById('pips');
+const diceTouch=document.getElementById('diceTouch');
+
+// سرعة
+let SPEED='normal';
+const SPEED_MAP={ slow:{move:700,between:900,turn:1000}, normal:{move:300,between:500,turn:600}, fast:{move:120,between:150,turn:180} };
+
+// ===== إعداد الرصّات =====
+function applySetup(){
+  points = Array.from({length:24}, ()=>({p:null,c:0,u:0})); // u=محبوس تحت (Plakoto)
+  bar=[0,0]; home=[0,0];
+  if(setup==='hyper3'){
+    set(23,0,3); set(0,1,3);
+  } else if(setup==='row15'){
+    set(23,0,15); set(0,1,15);
+  } else {
+    set(23,0,2); set(12,0,5); set(7,0,3); set(5,0,5);
+    set(0,1,2);  set(11,1,5); set(16,1,3); set(18,1,5);
+  }
+}
+function set(i,p,c){ points[i]={p,c,u:0}; }
+
+// ===== Reset =====
+function reset(){
+  applySetup();
+  current=0; dice=[]; diceLeft=[]; selected=null; focusIdx=23; dragging.active=false;
+  turnEl.textContent='دور: الأسود'; setMsg('اختر النمط/الرصّة من الستارة ثم اضغط النرد للرمي');
+  drawStatic(); drawDynamic();
+}
+
+// ===== تحكم الستارة =====
+document.getElementById('themeSel').onchange=(e)=>{theme=e.target.value; drawStatic(); drawDynamic();};
+document.getElementById('variantSel').onchange=(e)=>{variant=e.target.value; drawStatic(); drawDynamic();};
+document.getElementById('setupSel').onchange=(e)=>{setup=e.target.value; reset();};
+document.getElementById('speedSel').onchange=(e)=>{SPEED=e.target.value;};
+document.getElementById('modePVP').onchange=(e)=>{ if(e.target.checked){ mode='pvp'; } };
+document.getElementById('modeAI').onchange=(e)=>{ if(e.target.checked){ mode='ai'; } };
+document.getElementById('modeAIAI').onchange=(e)=>{ if(e.target.checked){ mode='ai-ai'; } };
+document.getElementById('assistBtn').onclick=()=>{ audioInit(); assistOneMove(); };
+document.getElementById('newBtn').onclick=()=>{ reset(); audioInit(); };
+
+// ===== تحرير القطع =====
+let editing=false, editAdd=true, editWho=0;
+const editBar=document.getElementById('editBar');
+const editWhoEl=document.getElementById('editWho');
+const editModeEl=document.getElementById('editMode');
+const cBEl=document.getElementById('cB'); const cWEl=document.getElementById('cW');
+document.getElementById('editBtn').onclick=()=>{ editing=!editing; editBar.style.display=editing?'flex':'none'; setMsg(editing?'وضع التحرير: انقر لإضافة/إزالة':'—'); drawDynamic(); };
+document.getElementById('toggleWho').onclick=()=>{ editWho=1-editWho; editWhoEl.textContent = editWho===0? 'الأسود':'الأبيض'; };
+document.getElementById('toggleAdd').onclick=()=>{ editAdd=!editAdd; editModeEl.textContent = editAdd? 'إضافة':'إزالة'; };
+document.getElementById('clearAll').onclick=()=>{ points=Array.from({length:24},()=>({p:null,c:0,u:0})); bar=[0,0]; home=[0,0]; updateCounts(); drawDynamic(); };
+document.getElementById('stdFill').onclick=()=>{ setup='standard'; applySetup(); updateCounts(); drawDynamic(); };
+document.getElementById('rowFill').onclick=()=>{ setup='row15'; applySetup(); updateCounts(); drawDynamic(); };
+document.getElementById('doneEdit').onclick=()=>{
+  const [b,w]=countStones();
+  if(b!==15 || w!==15){ alert('يجب أن يملك كل لاعب 15 حجرًا قبل البدء.'); return; }
+  editing=false; editBar.style.display='none'; setMsg('تم — يمكنك الرمي الآن');
+};
+function countStones(){ let b=0,w=0; for(const st of points){ if(st.p===0) b+=st.c; if(st.p===1) w+=st.c; } return [b,w]; }
+function updateCounts(){ const [b,w]=countStones(); cBEl.textContent=b; cWEl.textContent=w; }
+
+// ===== الأحداث على اللوح =====
+cv.addEventListener('pointerdown', (ev)=>{
+  audioInit();
+  const pos = getBoardPos(ev);
+  const idx=hitPoint(pos.x,pos.y);
+  if(editing){
+    if(idx===null) return;
+    const st=points[idx];
+    if(editAdd){
+      if((editWho===0 && countStones()[0]<15) || (editWho===1 && countStones()[1]<15)){
+        if(st.p===null){ st.p=editWho; st.c=1; }
+        else if(st.p===editWho){ st.c++; }
+      }
+    }else{
+      if(st.p===editWho && st.c>0){ st.c--; if(st.c===0){ st.p=null; } }
+    }
+    updateCounts(); drawDynamic(); return;
+  }
+  const idx2=idx; if(idx2!==null) focusIdx=idx2;
+  if(bar[current]>0 && variant!=='plakoto'){
+    dragging.active=true; dragging.from='bar'; dragging.x=pos.x; dragging.y=pos.y;
+    setMsg('اسحب إلى خانة مضيئة لإدخال الحجر من البار');
+    drawDynamic(); highlightMoves(null,true); return;
+  }
+  if(idx2===null) return;
+  const st=points[idx2];
+  if(st.p===current && st.c>0){
+    selected=idx2;
+    dragging.active=true; dragging.from=idx2; dragging.x=pos.x; dragging.y=pos.y;
+    drawDynamic(); highlightMoves(selected); setMsg('اسحب إلى الهدف أو اضغط الهدف');
+  }
+});
+cv.addEventListener('pointermove', (ev)=>{
+  if(!dragging.active) return;
+  const pos=getBoardPos(ev); dragging.x=pos.x; dragging.y=pos.y; drawDynamic(true); if(selected!==null) highlightMoves(selected);
+});
+cv.addEventListener('pointerup', (ev)=>{
+  if(!dragging.active) return;
+  const pos=getBoardPos(ev); dragging.active=false;
+  const idx=hitPoint(pos.x,pos.y);
+  if(dragging.from==='bar'){
+    const ents = enterMoves();
+    if(idx!==null && ents.some(m=>m.to===idx)){ const m=ents.find(mm=>mm.to===idx); applyMove(m); selected=null; drawDynamic(); endTurnIfDone(); return; }
+    setMsg('إفلات في خانة مضيئة لإدخال الحجر'); drawDynamic(); return;
+  }
+  if(selected!==null){
+    const homeDrop = isHomeClick(pos,current);
+    const moves = legalMovesFrom(selected);
+    let m = null;
+    if(homeDrop){ m = moves.find(mm=>mm.to==='home'); }
+    else if(idx!==null){ 
+      m = moves.find(mm=>!mm.enter && mm.from===selected && mm.to===idx);
+      if(!m){ const close=nearestHighlight(pos.x,pos.y,moves); if(close) m=close; }
+    }
+    if(m){ applyMove(m); selected=null; drawDynamic(); endTurnIfDone(); }
+    else { setMsg('نقلة غير قانونية'); selected=null; drawDynamic(); }
+  }
+});
+
+// Roll by tapping dice
+document.getElementById('diceTouch').onclick = ()=> {
+  audioInit();
+  if(diceLeft.length>0){ setMsg('أكمل حركاتك أولاً'); return; }
+  rollDice(current===1 && (mode==='ai' || mode==='ai-ai'));
+};
+
+// ===== Dice =====
+function rollDice(isAI=false){
+  rollSound?.();
+  const d1=1+Math.floor(rand()*6), d2=1+Math.floor(rand()*6);
+  dice=[d1,d2]; diceLeft=(d1===d2)?[d1,d1,d1,d1]:[d1,d2];
+  renderDice(dice, isAI);
+  speakDice(d1,d2);
+  setMsg(isAI?'دور الكمبيوتر':'اختر خانة للتحريك أو اسحب القطعة');
+  selected=null; drawDynamic();
+  if(isAI) setTimeout(aiTurn, SPEED_MAP[SPEED].move);
+}
+function renderDice([a,b], isAI=false){
+  const boxes = [document.getElementById('diceTouch')];
+  for(const el of boxes){
+    el.innerHTML='';
+    for(const n of [a,b]){
+      const die=document.createElement('div'); die.className='die' + (isAI?' ai':'');
+      for(const [x,y] of pipPositions(n)){
+        const d=document.createElement('div'); d.className='dot'; d.style.left=x+'%'; d.style.top=y+'%'; d.style.background=isAI?'#111':'#fff';
+        die.appendChild(d);
+      }
+      el.appendChild(die);
+      die.animate([{transform:'scale(1.0)'},{transform:'scale(1.15)'},{transform:'scale(1.0)'}],{duration:160});
+    }
+  }
+}
+function pipPositions(n){
+  const map={1:[[50,50]],2:[[25,25],[75,75]],3:[[25,25],[50,50],[75,75]],4:[[25,25],[75,25],[25,75],[75,75]],5:[[25,25],[75,25],[50,50],[25,75],[75,75]],6:[[25,25],[75,25],[25,50],[75,50],[25,75],[75,75]]};
+  return map[n];
+}
+function rand(){ const a=new Uint32Array(1); crypto.getRandomValues(a); return a[0]/2**32; }
+
+// ===== قواعد الحركة (تشمل Plakoto و Fevga) =====
+function legalMovesFrom(idx){
+  const pl=current, st=points[idx];
+  if(!st || st.p!==pl || st.c===0) return [];
+  if(variant!=='plakoto' && bar[pl]>0) return [];
+  const res=[], ds=[...new Set(diceLeft)];
+  for(const d of ds){
+    const t=targetIndex(idx,d,pl);
+    if(t>=0 && t<24 && canLand(pl,t)) res.push({from:idx,to:t,d});
+    if(canBearOff(pl) && inHome(idx,pl)){
+      const need=needToBear(idx,pl);
+      if(need===d || (!existsBeyond(pl,d) && need<d)) res.push({from:idx,to:'home',d});
+    }
+  }
+  return res;
+}
+function inHome(i,pl){ return pl===0? (i<=5) : (i>=18); }
+function targetIndex(from,d,pl){ return pl===0? (from - d) : (from + d); }
+function canLand(pl,to){
+  const st=points[to];
+  if(st.p===null || st.p===pl) return true;
+  if(variant==='nohit' || variant==='fevga'){ return false; }
+  if(variant==='plakoto'){ return st.p!==pl && st.c===1; }
+  if(st.p!==pl && st.c===1) return true;
+  return false;
+}
+function canBearOff(pl){
+  if(variant!=='plakoto' && bar[pl]>0) return false;
+  for(let i=0;i<24;i++){
+    const st=points[i];
+    if(st.p===pl && st.c>0 && !inHome(i,pl)) return false;
+    if(variant==='plakoto' && st.p===1-pl && st.u>0 && !inHome(i,pl)) return false;
+  }
+  return true;
+}
+function needToBear(i,pl){ return pl===0? (i+1):(24-i); }
+function existsBeyond(pl,d){
+  if(pl===0){ for(let i=d;i<6;i++){ if(points[i].p===0 && points[i].c>0) return true; } }
+  else { for(let i=18;i<24-d;i++){ if(points[i].p===1 && points[i].c>0) return true; } }
+  if(variant==='plakoto'){
+    if(pl===0){ for(let i=d;i<6;i++){ if(points[i].p===1 && points[i].u>0) return true; } }
+    else { for(let i=18;i<24-d;i++){ if(points[i].p===0 && points[i].u>0) return true; } }
+  }
+  return false;
+}
+function enterMoves(){
+  if(variant==='plakoto') return [];
+  const pl=current; if(bar[pl]===0) return [];
+  const res=[], ds=[...new Set(diceLeft)];
+  for(const d of ds){
+    const to= pl===0? (24-d):(d-1);
+    if(canLand(pl,to)) res.push({enter:true,to,d});
+  }
+  return res;
+}
+function applyMove(m){
+  const pl=current; let type='place';
+  if(m.enter){ bar[pl]--; type=placeTo(m.to,pl); }
+  else if(m.to==='home'){ removeFrom(m.from,pl); home[pl]++; type='bear'; }
+  else { removeFrom(m.from,pl); type=placeTo(m.to,pl); }
+  consumeDie(m.d);
+  woodClick(type==='bear'? 320: type==='pin'||type==='hit'? 280: 200, type==='bear'?0.1:0.08, 0.24);
+}
+function consumeDie(d){ const i=diceLeft.indexOf(d); if(i>=0){diceLeft.splice(i,1); return;} for(let k=0;k<diceLeft.length;k++){ if(diceLeft[k]===d){ diceLeft.splice(k,1); return; } } }
+function removeFrom(idx,pl){
+  const st=points[idx]; st.c--;
+  if(st.c<=0){
+    if(variant==='plakoto' && st.u>0){
+      st.p=1-pl; st.c=st.u; st.u=0;
+    }else{ st.p=null; st.c=0; st.u=0; }
+  }
+}
+function placeTo(idx,pl){
+  const st=points[idx];
+  if(st.p===null){ st.p=pl; st.c++; return 'place'; }
+  if(st.p===pl){ st.c++; return 'place'; }
+  if(variant==='plakoto'){
+    if(st.c===1){ st.u += 1; st.p=pl; st.c=1; return 'pin'; }
+    return 'block';
+  } else if(variant==='standard'){
+    if(st.c===1){ const opp=st.p; st.p=pl; st.c=1; bar[opp]++; return 'hit'; }
+  }
+  st.c++; return 'place';
+}
+
+// ===== ذكاء اصطناعي بسيط =====
+function aiTurn(){
+  if(diceLeft.length===0){ endTurnIfDone(); return; }
+  const delay=SPEED_MAP[SPEED].between;
+  const doOne=()=>{
+    if(diceLeft.length===0){ endTurnIfDone(); return; }
+    const mv=bestMoveFor(current);
+    if(mv){ applyMove(mv); drawDynamic(); }
+    else { setMsg('الكمبيوتر: لا نقلة متاحة — تمرير'); diceLeft.length=0; endTurnIfDone(); return; }
+    setTimeout(()=>{ if(diceLeft.length>0) doOne(); else endTurnIfDone(); }, delay);
+  };
+  doOne();
+}
+function bestMoveFor(pl){
+  if(variant!=='plakoto' && bar[pl]>0){ const ents=enterMoves(); if(ents.length===0) return null; return chooseBest(ents,pl); }
+  let best=null,score=-1e9;
+  for(let i=0;i<24;i++){ const st=points[i]; if(st.p===pl && st.c>0){ for(const m of legalMovesFrom(i)){ const sc=scoreIf(m,pl); if(sc>score){score=sc; best=m;} } } }
+  return best;
+}
+function scoreIf(m,pl){
+  let sc=0;
+  if(m.to==='home'){ sc+=50; }
+  else{
+    const to=(typeof m.to==='number')? m.to : -1, st=(to>=0)? points[to]:null;
+    if(variant==='standard' && st && st.p!==null && st.p!==pl && st.c===1) sc+=30;
+    if(variant==='plakoto' && st && st.p!==null && st.p!==pl && st.c===1) sc+=24;
+    sc += (pl===0? (to): (23-to))*0.2;
+    if(st && st.p===pl && st.c===1) sc+=8; if(st && st.p===pl && st.c>=2) sc+=12;
+  }
+  return sc;
+}
+function chooseBest(moves,pl){ let best=moves[0], score=-1e9; for(const m of moves){ const sc=scoreIf(m,pl); if(sc>score){score=sc; best=m;} } return best; }
+function assistOneMove(){
+  if(diceLeft.length===0){ setMsg('لا قيم متبقية — ارمي'); return; }
+  if(variant!=='plakoto' && bar[current]>0){ const ents=enterMoves(); if(ents.length===0){ setMsg('لا إدخال متاح — تمرير'); diceLeft.length=0; endTurnIfDone(); return; } const m=chooseBest(ents,current); applyMove(m); drawDynamic(); setTimeout(endTurnIfDone, SPEED_MAP[SPEED].between); return; }
+  let best=null,score=-1e9; for(let i=0;i<24;i++){ const st=points[i]; if(st.p===current&&st.c>0){ for(const m of legalMovesFrom(i)){ const sc=scoreIf(m,current); if(sc>score){score=sc; best=m;} } } } if(best){ applyMove(best); drawDynamic(); setTimeout(endTurnIfDone, SPEED_MAP[SPEED].between);} else { setMsg('لا نقلة — تمرير'); diceLeft.length=0; endTurnIfDone(); }
+}
+
+// ===== تمرير/إنهاء الدور =====
+function maybeNoMoves(){
+  const pl=current;
+  if(variant!=='plakoto' && bar[pl]>0) return enterMoves().length===0;
+  for(let i=0;i<24;i++){ const st=points[i]; if(st.p===pl && st.c>0 && legalMovesFrom(i).length>0) return false; }
+  return true;
+}
+function autoPassIfStuck(){
+  if(diceLeft.length===0) return false;
+  if(maybeNoMoves()){ setMsg('لا نقلات متاحة — تم تمرير الدور'); diceLeft.length=0; return true; }
+  return false;
+}
+function endTurnIfDone(){
+  if(diceLeft.length===0){
+    if(checkWin(current)){ setMsg(`فوز ${current===0?'الأسود':'الأبيض'}!`); reset(); return; }
+    current=1-current; selected=null; dice=[];
+    turnEl.textContent='دور: ' + (current===0?'الأسود':'الأبيض');
+    setMsg('اضغط النرد للرمي'); drawDynamic();
+    if(mode==='ai-ai'){ setTimeout(()=> rollDice(true), SPEED_MAP[SPEED].turn); }
+    if(mode==='ai' && current===1){ setTimeout(()=> rollDice(true), SPEED_MAP[SPEED].turn); }
+  } else {
+    if(autoPassIfStuck()){ endTurnIfDone(); return; }
+    setMsg('أكمل حركاتك: تبقّى ' + diceLeft.join(','));
+  }
+}
+function checkWin(pl){ return home[pl]>= (setup==='hyper3'?3:15); }
+
+// ===== رسم (مع تدوير في الوضع الطولي) =====
+function geometry(){
+  const w=DISP_W, h=DISP_H;
+  const margin = Math.max(20, Math.min(w,h)*0.03);
+  const innerW = w - margin*2;
+  const innerH = h - margin*2;
+  const triW = innerW/12;
+  const midX = w/2;
+  return {w,h,margin,innerW,innerH,triW,midX};
+}
+function drawStatic(){
+  const g=geometry(); const c=offctx, pal=getPalette(theme);
+  c.clearRect(0,0,g.w,g.h);
+  const grd=c.createLinearGradient(0,0,g.w,g.h); grd.addColorStop(0,pal.bg1); grd.addColorStop(1,pal.bg2);
+  c.fillStyle=grd; c.fillRect(0,0,g.w,g.h);
+  c.strokeStyle=pal.border; c.lineWidth=6; c.strokeRect(8,8,g.w-16,g.h-16);
+  c.fillStyle= pal.board; c.fillRect(g.margin,g.margin,g.innerW,g.innerH);
+  for(let i=0;i<12;i++){
+    const x=g.margin + i*g.triW;
+    triangle(c,x, g.margin, g.triW, g.innerH/2, i%2? pal.triA:pal.triB, true);
+    drawMotif(c,x, g.margin, g.triW, g.innerH/2, true, pal.motif);
+    triangle(c,x, g.margin+g.innerH, g.triW, g.innerH/2, i%2? pal.triB:pal.triA, false);
+    drawMotif(c,x, g.margin+g.innerH, g.triW, g.innerH/2, false, pal.motif);
+  }
+  c.fillStyle='#0007'; c.fillRect(g.midX-6, g.margin, 12, g.innerH);
+}
+function triangle(c,x,y,w,h,clr,up){ c.beginPath(); c.moveTo(x,y); c.lineTo(x+w,y); c.lineTo(x+w/2, up? y+h : y-h); c.closePath(); c.fillStyle=clr; c.fill(); }
+function drawMotif(c,x,y,w,h,up,color){
+  c.save(); c.strokeStyle=color; c.lineWidth=1;
+  const steps=6, cx=x+w/2;
+  for(let i=1;i<steps;i++){
+    const t=i/steps, yy= up? (y+h*t):(y-h*t);
+    c.beginPath(); c.moveTo(x+w*0.15, up? y:y); c.lineTo(cx, yy); c.lineTo(x+w*0.85, up? y:y); c.stroke();
+  }
+  c.restore();
+}
+function drawDynamic(showGhost=false){
+  // Paint off to main with rotation if needed
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  if(ROT===90){
+    ctx.save();
+    ctx.translate(0, cv.height/DPR);
+    ctx.rotate(-Math.PI/2);
+  }
+  // background
+  ctx.drawImage(off, 0, 0, DISP_W, DISP_H);
+  // chips & overlays
+  for(let i=0;i<24;i++){
+    const st=points[i];
+    if(st.c>0 || st.u>0){
+      const {x,yBase,isTop}=pointRect(i);
+      if(st.u>0){
+        for(let k=0;k<Math.min(st.u,3);k++){
+          const y=isTop? (yBase + k*22 + 8) : (yBase - k*22 - 8);
+          const owner=(st.p===0)?1:0;
+          chip(ctx,x,y, owner===0? '#161616AA':'#f7f7f7AA', owner===0? '#ddd':'#333');
+        }
+        if(st.u>3){ label(ctx,'+'+(st.u-3), isTop? (yBase+3*22+18):(yBase-3*22-14), x-6); }
+      }
+      if(st.c>0){
+        for(let k=0;k<Math.min(st.c,5);k++){
+          const y=isTop? (yBase + k*26) : (yBase - k*26);
+          chip(ctx,x,y, st.p===0? '#161616':'#f7f7f7', st.p===0? '#ddd':'#333');
+        }
+        if(st.c>5){ label(ctx,'+'+(st.c-5), isTop? (yBase+5*26+12):(yBase-5*26-8), x-6); }
+      }
+    }
+  }
+  ctx.font='12px system-ui'; ctx.fillStyle='#e6d7a5';
+  ctx.fillText('BAR: ' + bar[0]+' | '+bar[1], 52, 30);
+  ctx.fillText('HOME: ' + home[0]+' | '+home[1], 52, 50);
+  if(focusIdx!==null){
+    const p = pointRect(focusIdx);
+    ctx.beginPath(); ctx.arc(p.x, p.yBase, 20, 0, Math.PI*2);
+    ctx.strokeStyle=getPalette(theme).hiSelect; ctx.lineWidth=2; ctx.stroke();
+  }
+  if(showGhost && dragging.active && (dragging.from!==null)){
+    ctx.globalAlpha=0.8;
+    chip(ctx, dragging.x, dragging.y, current===0? '#161616':'#f7f7f7', current===0? '#ddd':'#333');
+    ctx.globalAlpha=1;
+  }
+
+  if(ROT===90){ ctx.restore(); }
+
+  computePips();
+}
+function pointRect(i){
+  const g=geometry(), {margin,innerW,innerH,triW}=g;
+  const isTop = i>=12;
+  const pos = isTop ? (i-12) : i;
+  const x = margin + (isTop? (11-pos) : pos)*triW + triW/2;
+  const yBase = isTop? (margin+24) : (margin+innerH-24);
+  return {x,yBase,isTop};
+}
+function chip(c,x,y,fill,stroke){ c.beginPath(); c.arc(x,y,18,0,Math.PI*2); c.fillStyle=fill; c.fill(); c.lineWidth=2; c.strokeStyle=stroke; c.stroke(); }
+function label(c,t,y,x){ c.fillStyle='#fff'; c.fillText(t,x,y); }
+
+function highlightMoves(idx, entering=false){
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  if(ROT===90){ ctx.save(); ctx.translate(0, cv.height/DPR); ctx.rotate(-Math.PI/2); }
+  const moves = entering? enterMoves() : (variant!=='plakoto' && bar[current]>0? enterMoves(): legalMovesFrom(idx));
+  const pal = getPalette(theme);
+  for(const m of moves){
+    if(m.to==='home'){
+      const g=geometry();
+      ctx.strokeStyle=pal.hiTarget; ctx.lineWidth=3;
+      if(current===0){ ctx.strokeRect(g.margin, g.margin+g.innerH-36, g.innerW, 28); }
+      else { ctx.strokeRect(g.margin, g.margin+8, g.innerW, 28); }
+      continue;
+    }
+    const pr = pointRect(m.to);
+    ctx.beginPath(); ctx.arc(pr.x, pr.yBase, 22, 0, Math.PI*2);
+    ctx.strokeStyle=pal.hiTarget; ctx.lineWidth=3; ctx.stroke();
+  }
+  if(idx!==null && !entering){
+    const p = pointRect(idx);
+    ctx.beginPath(); ctx.arc(p.x, p.yBase, 26, 0, Math.PI*2);
+    ctx.strokeStyle=pal.hiSelect; ctx.lineWidth=3; ctx.stroke();
+  }
+  if(ROT===90){ ctx.restore(); }
+}
+
+// أدوات
+function getBoardPos(ev){
+  const rect = cv.getBoundingClientRect();
+  const xs = ev.clientX - rect.left;
+  const ys = ev.clientY - rect.top;
+  if(ROT===0){
+    return {x: xs, y: ys};
+  } else {
+    // Inverse of: x_scr = y_board ; y_scr = -x_board + DISP_H
+    const xb = DISP_H - ys;
+    const yb = xs;
+    return {x: xb, y: yb};
+  }
+}
+function hitPoint(x,y){
+  const g=geometry(), {margin,innerW,innerH,triW}=g;
+  if(x<margin || x>margin+innerW || y<margin || y>margin+innerH) return null;
+  const top = y < (margin + innerH/2);
+  const pos = Math.floor((x - margin)/triW);
+  const idx = top? (12 + (11-pos)) : pos;
+  return idx;
+}
+function isHomeClick(pos,pl){
+  const g = geometry();
+  if(pl===0) return pos.y > (g.margin + g.innerH - 40);
+  else return pos.y < (g.margin + 40);
+}
+
+// ===== Pips =====
+function computePips(){
+  let p0=0,p1=0;
+  for(let i=0;i<24;i++){
+    const st=points[i];
+    if(st.p===0 && st.c>0){ p0+=(i+1)*st.c; }
+    if(st.p===1 && st.c>0){ p1+=(24-i)*st.c; }
+    if(variant==='plakoto' && st.u>0){
+      if(st.p===0){ p1 += (24-i)*st.u; } else { p0 += (i+1)*st.u; }
+    }
+  }
+  pipsEl.textContent = `PIPS — أسود: ${p0} | أبيض: ${p1}`;
+  return [p0,p1];
+}
+function nearestHighlight(x,y,moves){
+  let best=null,bestD=1e9;
+  for(const m of moves){ if(m.to==='home') continue; const p=pointRect(m.to); const dx=p.x-x,dy=p.yBase-y; const d=Math.hypot(dx,dy); if(d<bestD && d<48){ best=m; bestD=d; } }
+  return best;
+}
+function celebrate(pl){ setMsg(`فوز ${pl===0?'الأسود':'الأبيض'}!`); }
+function setMsg(t){ msgEl.textContent=t; }
+
+// ===== Init =====
+resizeCanvas();
+reset();
+
+// Simple wood SFX
+function woodClick(freq=220, dur=0.08, vol=0.22){
+  if(!AC) return;
+  const o=AC.createOscillator(); const g=AC.createGain(); const f=AC.createBiquadFilter();
+  o.type='square'; o.frequency.value=freq + (Math.random()*30-15);
+  f.type='lowpass'; f.frequency.value=1200;
+  g.gain.value=vol;
+  o.connect(f).connect(g).connect(AC.destination);
+  o.start();
+  o.frequency.exponentialRampToValueAtTime(freq/2, AC.currentTime+dur*0.8);
+  g.gain.exponentialRampToValueAtTime(0.0001, AC.currentTime+dur);
+  o.stop(AC.currentTime+dur);
+}
+</script>
+</body>
+</html>
